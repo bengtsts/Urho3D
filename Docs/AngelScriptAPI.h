@@ -8376,6 +8376,7 @@ uint clearFlags;
 uint clearStencil;
 String depthStencilName;
 bool enabled;
+String eventName;
 bool markToStencil;
 String metadata;
 uint numOutputs;
@@ -8470,6 +8471,7 @@ float mobileShadowBiasAdd;
 float mobileShadowBiasMul;
 /* readonly */
 uint numBatches;
+int numExtraInstancingBufferElements;
 /* readonly */
 Array<uint> numGeometries;
 /* readonly */
@@ -8618,6 +8620,108 @@ bool empty;
 uint length;
 Array<String> names;
 StringHash type;
+};
+
+class RibbonTrail
+{
+// Methods:
+void ApplyAttributes();
+void Commit();
+void DrawDebugGeometry(DebugRenderer, bool);
+Variant GetAttribute(const String&) const;
+ValueAnimation GetAttributeAnimation(const String&) const;
+float GetAttributeAnimationSpeed(const String&) const;
+float GetAttributeAnimationTime(const String&) const;
+WrapMode GetAttributeAnimationWrapMode(const String&) const;
+Variant GetAttributeDefault(const String&) const;
+bool GetInterceptNetworkUpdate(const String&) const;
+bool HasSubscribedToEvent(Object, const String&);
+bool HasSubscribedToEvent(const String&);
+bool IsInView(Camera) const;
+bool Load(File, bool = false);
+bool Load(VectorBuffer&, bool = false);
+bool LoadJSON(const JSONValue&, bool = false);
+bool LoadXML(const XMLElement&, bool = false);
+void MarkNetworkUpdate() const;
+void Remove();
+void RemoveAttributeAnimation(const String&);
+void RemoveInstanceDefault();
+void RemoveObjectAnimation();
+void ResetToDefault();
+bool Save(File) const;
+bool Save(VectorBuffer&) const;
+bool SaveJSON(JSONValue&) const;
+bool SaveXML(XMLElement&) const;
+void SendEvent(const String&, VariantMap& = VariantMap ( ));
+void SetAnimationTime(float);
+bool SetAttribute(const String&, const Variant&);
+void SetAttributeAnimation(const String&, ValueAnimation, WrapMode = WM_LOOP, float = 1.0f);
+void SetAttributeAnimationSpeed(const String&, float);
+void SetAttributeAnimationTime(const String&, float);
+void SetAttributeAnimationWrapMode(const String&, WrapMode);
+void SetInterceptNetworkUpdate(const String&, bool);
+
+// Properties:
+bool animationEnabled;
+float animationLodBias;
+/* readonly */
+Array<Variant> attributeDefaults;
+/* readonly */
+Array<AttributeInfo> attributeInfos;
+Array<Variant> attributes;
+/* readonly */
+BoundingBox boundingBox;
+bool castShadows;
+/* readonly */
+String category;
+float drawDistance;
+bool emitting;
+bool enabled;
+/* readonly */
+bool enabledEffective;
+Color endColor;
+float endScale;
+/* readonly */
+uint id;
+/* readonly */
+bool inView;
+float lifetime;
+uint lightMask;
+float lodBias;
+Material material;
+uint maxLights;
+/* readonly */
+Node node;
+/* readonly */
+uint numAttributes;
+ObjectAnimation objectAnimation;
+bool occludee;
+bool occluder;
+/* readonly */
+int refs;
+float shadowDistance;
+uint shadowMask;
+bool sorted;
+Color startColor;
+float startScale;
+uint tailColumn;
+bool temporary;
+TrailType trailType;
+/* readonly */
+StringHash type;
+/* readonly */
+String typeName;
+bool updateInvisible;
+float vertexDistance;
+uint viewMask;
+/* readonly */
+int weakRefs;
+float width;
+/* readonly */
+BoundingBox worldBoundingBox;
+/* readonly */
+Zone zone;
+uint zoneMask;
 };
 
 class RigidBody
@@ -14130,6 +14234,7 @@ enum Orientation2D
 O_ORTHOGONAL,
 O_ISOMETRIC,
 O_STAGGERED,
+O_HEXAGONAL,
 };
 
 enum PassLightingMode
@@ -14172,6 +14277,7 @@ CMD_QUAD,
 CMD_FORWARDLIGHTS,
 CMD_LIGHTVOLUMES,
 CMD_RENDERUI,
+CMD_SENDEVENT,
 };
 
 enum RenderSurfaceUpdateMode
@@ -14290,6 +14396,12 @@ OT_POLYGON,
 OT_POLYLINE,
 OT_TILE,
 OT_INVALID,
+};
+
+enum TrailType
+{
+TT_FACE_CAMERA,
+TT_BONE,
 };
 
 enum TransformSpace
@@ -14607,7 +14719,7 @@ int KEY_DELETE;
 int KEY_DOWN;
 int KEY_E;
 int KEY_END;
-int KEY_ESC;
+int KEY_ESCAPE;
 int KEY_F;
 int KEY_F1;
 int KEY_F10;

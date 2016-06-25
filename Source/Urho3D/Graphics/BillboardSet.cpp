@@ -30,7 +30,6 @@
 #include "../Graphics/Geometry.h"
 #include "../Graphics/Graphics.h"
 #include "../Graphics/IndexBuffer.h"
-#include "../Graphics/Material.h"
 #include "../Graphics/OctreeQuery.h"
 #include "../Graphics/VertexBuffer.h"
 #include "../IO/MemoryBuffer.h"
@@ -79,6 +78,7 @@ BillboardSet::BillboardSet(Context* context) :
     forceUpdate_(false),
     geometryTypeUpdate_(false),
     sortThisFrame_(false),
+    hasOrthoCamera_(false),
     sortFrameNumber_(0),
     previousOffset_(Vector3::ZERO)
 {
@@ -176,40 +176,18 @@ void BillboardSet::UpdateBatches(const FrameInfo& frame)
     Vector3 worldPos = node_->GetWorldPosition();
     Vector3 offset = (worldPos - frame.camera_->GetNode()->GetWorldPosition());
     // Sort if position relative to camera has changed
-    if (offset != previousOffset_)
+    if (offset != previousOffset_ || frame.camera_->IsOrthographic() != hasOrthoCamera_)
     {
         if (sorted_)
             sortThisFrame_ = true;
         if (faceCameraMode_ == FC_DIRECTION)
             bufferDirty_ = true;
 
+        hasOrthoCamera_ = frame.camera_->IsOrthographic();
+
         // Calculate fixed screen size scale factor for billboards if needed
         if (fixedScreenSize_)
-        {
-            bufferDirty_ = true;
-            worldBoundingBoxDirty_ = true;
-            float invViewHeight = 1.0f / frame.viewSize_.y_;
-            float halfViewWorldSize = frame.camera_->GetHalfViewSize();
-
-            if (!frame.camera_->IsOrthographic())
-            {
-                Matrix4 viewProj(frame.camera_->GetProjection(false) * frame.camera_->GetView());
-                const Matrix3x4& worldTransform = node_->GetWorldTransform();
-                Matrix3x4 billboardTransform = relative_ ? worldTransform : Matrix3x4::IDENTITY;
-                Vector3 billboardScale = scaled_ ? worldTransform.Scale() : Vector3::ONE;
-
-                for (unsigned i = 0; i < billboards_.Size(); ++i)
-                {
-                    Vector4 projPos(viewProj * Vector4(billboardTransform * billboards_[i].position_, 1.0f));
-                    billboards_[i].screenScaleFactor_ = invViewHeight * halfViewWorldSize * projPos.w_;
-                }
-            }
-            else
-            {
-                for (unsigned i = 0; i < billboards_.Size(); ++i)
-                    billboards_[i].screenScaleFactor_ = invViewHeight * halfViewWorldSize;
-            }
-        }
+            CalculateFixedScreenSize(frame);
     }
 
     distance_ = frame.camera_->GetDistance(GetWorldBoundingBox().Center());
@@ -233,11 +211,9 @@ void BillboardSet::UpdateBatches(const FrameInfo& frame)
 
 void BillboardSet::UpdateGeometry(const FrameInfo& frame)
 {
-    if (bufferSizeDirty_ || indexBuffer_->IsDataLost())
-        UpdateBufferSize();
-
-    if (bufferDirty_ || sortThisFrame_ || vertexBuffer_->IsDataLost())
-        UpdateVertexBuffer(frame);
+    // If rendering from multiple views and fixed screen size is in use, re-update scale factors before each render
+    if (fixedScreenSize_ && viewCameras_.Size() > 1)
+        CalculateFixedScreenSize(frame);
 
     // If using camera facing, re-update the rotation for the current view now
     if (faceCameraMode_ != FC_NONE)
@@ -245,15 +221,20 @@ void BillboardSet::UpdateGeometry(const FrameInfo& frame)
         transforms_[1] = Matrix3x4(Vector3::ZERO, frame.camera_->GetFaceCameraRotation(node_->GetWorldPosition(),
             node_->GetWorldRotation(), faceCameraMode_), Vector3::ONE);
     }
+
+    if (bufferSizeDirty_ || indexBuffer_->IsDataLost())
+        UpdateBufferSize();
+
+    if (bufferDirty_ || sortThisFrame_ || vertexBuffer_->IsDataLost())
+        UpdateVertexBuffer(frame);
 }
 
 UpdateGeometryType BillboardSet::GetUpdateGeometryType()
 {
     // If using camera facing, always need some kind of geometry update, in case the billboard set is rendered from several views
-    if (bufferDirty_ || bufferSizeDirty_ || vertexBuffer_->IsDataLost() || indexBuffer_->IsDataLost() || sortThisFrame_)
+    if (bufferDirty_ || bufferSizeDirty_ || vertexBuffer_->IsDataLost() || indexBuffer_->IsDataLost() || sortThisFrame_ ||
+        faceCameraMode_ != FC_NONE || fixedScreenSize_)
         return UPDATE_MAIN_THREAD;
-    else if (faceCameraMode_ != FC_NONE)
-        return UPDATE_WORKER_THREAD;
     else
         return UPDATE_NONE;
 }
@@ -273,6 +254,8 @@ void BillboardSet::SetNumBillboards(unsigned num)
         num = MAX_BILLBOARDS;
 
     unsigned oldNum = billboards_.Size();
+    if (num == oldNum)
+        return;
 
     billboards_.Resize(num);
 
@@ -509,8 +492,8 @@ void BillboardSet::UpdateBufferSize()
             vertexBuffer_->SetSize(numBillboards * 4, MASK_POSITION | MASK_NORMAL | MASK_COLOR | MASK_TEXCOORD1 | MASK_TEXCOORD2 | MASK_TANGENT, true);
             geometry_->SetVertexBuffer(0, vertexBuffer_);
 
-        } 
-        else 
+        }
+        else
         {
             vertexBuffer_->SetSize(numBillboards * 4, MASK_POSITION | MASK_COLOR | MASK_TEXCOORD1 | MASK_TEXCOORD2, true);
             geometry_->SetVertexBuffer(0, vertexBuffer_);
@@ -667,7 +650,7 @@ void BillboardSet::UpdateVertexBuffer(const FrameInfo& frame)
 
             dest += 32;
         }
-    } 
+    }
     else
     {
         Vector3 cameraWorldPosition = frame.camera_->GetNode()->GetWorldPosition();
@@ -762,6 +745,34 @@ void BillboardSet::MarkPositionsDirty()
 {
     Drawable::OnMarkedDirty(node_);
     bufferDirty_ = true;
+}
+
+void BillboardSet::CalculateFixedScreenSize(const FrameInfo& frame)
+{
+    float invViewHeight = 1.0f / frame.viewSize_.y_;
+    float halfViewWorldSize = frame.camera_->GetHalfViewSize();
+
+    if (!frame.camera_->IsOrthographic())
+    {
+        Matrix4 viewProj(frame.camera_->GetProjection(false) * frame.camera_->GetView());
+        const Matrix3x4& worldTransform = node_->GetWorldTransform();
+        Matrix3x4 billboardTransform = relative_ ? worldTransform : Matrix3x4::IDENTITY;
+
+        for (unsigned i = 0; i < billboards_.Size(); ++i)
+        {
+            Vector4 projPos(viewProj * Vector4(billboardTransform * billboards_[i].position_, 1.0f));
+            billboards_[i].screenScaleFactor_ = invViewHeight * halfViewWorldSize * projPos.w_;
+        }
+    }
+    else
+    {
+        for (unsigned i = 0; i < billboards_.Size(); ++i)
+            billboards_[i].screenScaleFactor_ = invViewHeight * halfViewWorldSize;
+    }
+
+    bufferDirty_ = true;
+    forceUpdate_ = true;
+    worldBoundingBoxDirty_ = true;
 }
 
 }

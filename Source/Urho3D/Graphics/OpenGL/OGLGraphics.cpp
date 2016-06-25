@@ -43,6 +43,7 @@
 #include "../../Graphics/Octree.h"
 #include "../../Graphics/ParticleEffect.h"
 #include "../../Graphics/ParticleEmitter.h"
+#include "../../Graphics/RibbonTrail.h"
 #include "../../Graphics/RenderSurface.h"
 #include "../../Graphics/Shader.h"
 #include "../../Graphics/ShaderPrecache.h"
@@ -62,6 +63,8 @@
 #include "../../IO/File.h"
 #include "../../IO/Log.h"
 #include "../../Resource/ResourceCache.h"
+
+#include <SDL/SDL.h>
 
 #include "../../DebugNew.h"
 
@@ -2020,7 +2023,7 @@ PODVector<int> Graphics::GetMultiSampleLevels() const
 
 IntVector2 Graphics::GetDesktopResolution() const
 {
-#if !defined(ANDROID) && !defined(IOS)
+#if !defined(__ANDROID__) && !defined(IOS)
     SDL_DisplayMode mode;
     SDL_GetDesktopDisplayMode(0, &mode);
     return IntVector2(mode.w, mode.h);
@@ -2072,6 +2075,7 @@ unsigned Graphics::GetFormat(CompressedFormat format) const
 unsigned Graphics::GetMaxBones()
 {
 #ifdef RPI
+    // At the moment all RPI GPUs are low powered and only have limited number of uniforms
     return 32;
 #else
     return gl3Support ? 128 : 64;
@@ -2253,6 +2257,9 @@ void* Graphics::ReserveScratchBuffer(unsigned size)
             i->data_ = new unsigned char[size];
             i->size_ = size;
             i->reserved_ = true;
+
+            URHO3D_LOGDEBUG("Resized scratch buffer to size " + String(size));
+
             return i->data_.Get();
         }
     }
@@ -2287,10 +2294,12 @@ void Graphics::CleanupScratchBuffers()
 {
     for (Vector<ScratchBuffer>::Iterator i = scratchBuffers_.Begin(); i != scratchBuffers_.End(); ++i)
     {
-        if (!i->reserved_ && i->size_ > maxScratchBufferRequest_ * 2)
+        if (!i->reserved_ && i->size_ > maxScratchBufferRequest_ * 2 && i->size_ >= 1024 * 1024)
         {
             i->data_ = maxScratchBufferRequest_ > 0 ? new unsigned char[maxScratchBufferRequest_] : 0;
             i->size_ = maxScratchBufferRequest_;
+
+            URHO3D_LOGDEBUG("Resized scratch buffer to size " + String(maxScratchBufferRequest_));
         }
     }
 
@@ -2439,7 +2448,7 @@ void Graphics::Restore()
     if (!impl_->window_)
         return;
 
-#ifdef ANDROID
+#ifdef __ANDROID__
     // On Android the context may be lost behind the scenes as the application is minimized
     if (impl_->context_ && !SDL_GL_GetCurrentContext())
     {
@@ -3416,6 +3425,7 @@ void RegisterGraphicsLibrary(Context* context)
     BillboardSet::RegisterObject(context);
     ParticleEffect::RegisterObject(context);
     ParticleEmitter::RegisterObject(context);
+    RibbonTrail::RegisterObject(context);
     CustomGeometry::RegisterObject(context);
     DecalSet::RegisterObject(context);
     Terrain::RegisterObject(context);
